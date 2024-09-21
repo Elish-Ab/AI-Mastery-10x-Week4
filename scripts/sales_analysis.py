@@ -56,7 +56,51 @@ def clean_data(df):
     logging.info("Store data is now clean")
     return df
 
+def plot_sales_distribution(df):
+    # Distribution of Sales
+    plt.figure(figsize=(10, 6))
+    sns.histplot(df['Sales'], bins=50, kde=True)
+    plt.title('Distribution of Sales')
+    plt.xlabel('Sales')
+    plt.ylabel('Frequency')
+    plt.show()
+    
+def plot_sales_correlation(df):
+    # Correlation matrix
+    correlation_matrix = df.corr()
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f")
+    plt.title('Correlation Matrix')
+    plt.show()
+    
+def plot_sales_histogram(df):
+    plt.figure(figsize=(10, 6))
+    sns.histplot(df['Sales'], bins=30, kde=True)
+    plt.title('Distribution of Sales')
+    plt.xlabel('Sales')
+    plt.ylabel('Frequency')
+    plt.show()
+    
+def plot_sales_vs_customers(df):
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(x='Sales', y='Customers', data=df)
+    plt.title('Sales vs Customers')
+    plt.xlabel('Sales')
+    plt.ylabel('Customers')
+    plt.show()
+    
+def plot_christmas_sales(df):
+    christmas_sales = df[df['Date'].str.contains('-12-')]
+    plt.figure(figsize=(10, 6))
+    sns.lineplot(x='Date', y='Sales', data=christmas_sales)
+    plt.title('Christmas Season Sales Trend')
+    plt.xlabel('Date')
+    plt.ylabel('Sales')
+    plt.xticks(rotation=45)
+    plt.show()
+    
 def plot_holiday_sales(df):
+    logging.info("Analyzing holiday sales")
     df['Date'] = pd.to_datetime(df['Date'])
     # Identify holiday dates
     holidays = df[(df['StateHoliday'] != '0') | (df['SchoolHoliday'] == 1)]
@@ -73,7 +117,7 @@ def plot_holiday_sales(df):
 
     # Concatenate the dataframes with the assigned holiday periods
     combined_data = pd.concat([sales_before_holiday, sales_during_holiday, sales_after_holiday])
-
+    logging.info("Holiday sales analysis completed")
     # Plot the data
     plt.figure(figsize=(12, 6))
     sns.barplot(x='Holiday Period', y='Sales', data=combined_data)
