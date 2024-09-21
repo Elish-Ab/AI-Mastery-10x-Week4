@@ -90,6 +90,7 @@ def plot_sales_vs_customers(df):
     plt.show()
     
 def plot_christmas_sales(df):
+    logging.info("plotting christmas sales")")
     christmas_sales = df[df['Date'].str.contains('-12-')]
     plt.figure(figsize=(10, 6))
     sns.lineplot(x='Date', y='Sales', data=christmas_sales)
