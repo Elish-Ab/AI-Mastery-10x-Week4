@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.cluster import KMeans
 from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from statsmodels.tsa.stattools import acf, pacf
@@ -165,6 +166,13 @@ def plot_sales_vs_customers(df):
 
 def plot_promo_effect(df):
     logging.info("Plotting promo effect over time...")
+
+    # Convert 'Date' column to datetime
+    df['Date'] = pd.to_datetime(df['Date'])
+
+    # Set 'Date' column as the index
+    df.set_index('Date', inplace=True)
+
     monthly_promo_sales = df.groupby([df.index.to_period('M'), 'Promo'])['Sales'].mean().unstack()
     monthly_promo_sales.columns = ['No Promo', 'Promo']
 
@@ -175,26 +183,112 @@ def plot_promo_effect(df):
     plt.legend(['No Promo', 'Promo'])
     plt.show()
     
-def plot_store_opening_closing_sales_behavior(df):
+def analyze_store_opening_closing(df):
     logging.info("Analyzing customer behavior during store opening and closing times")
 
-    # Convert 'Date' column to datetime
-    df['Date'] = pd.to_datetime(df['Date'])
+    # Ensure that 'Date' is set as the index in the DataFrame
+    if 'Date' not in df.index.names:
+        logging.error("Date index is missing in the DataFrame")
+        return
 
-    # Extract hour from the timestamp
-    df['Hour'] = df['Date'].dt.hour
+    # Extract hour from the index
+    df.index = pd.to_datetime(df.index)
+    df['Hour'] = df.index.hour
 
     # Group data based on opening and closing times (assumed here as 8 AM to 8 PM)
     opening_hours = range(8, 20)
     df['StoreStatus'] = df['Hour'].apply(lambda x: 'Open' if x in opening_hours else 'Closed')
 
+    # Count the number of customers for each hour and store status
+    hourly_data = df.groupby(['Hour', 'StoreStatus']).size().unstack().fillna(0)
+
     # Plot the data
     plt.figure(figsize=(12, 6))
-    sns.countplot(x='Hour', hue='StoreStatus', data=df, palette={"Open": "tab:blue", "Closed": "tab:orange"})
+    sns.lineplot(data=hourly_data, markers=True)
     plt.title('Customer Behavior During Store Opening and Closing Times')
     plt.xlabel('Hour of the Day')
     plt.ylabel('Count')
-    plt.legend(title='Store Status')
+    plt.legend(title='Store Status', labels=['Closed', 'Open'])
+    plt.show()
+
+def analyze_promo_effectiveness(df):
+    # Analyze promo effectiveness
+    promo_effect = df.groupby('Promo')['Sales'].mean()
+
+    # Predictive modeling
+    # Implement predictive modeling to estimate promo impact on sales
+
+    # Store clustering
+    X = df[['Store', 'Sales', 'Customers']]  # Features for clustering
+    kmeans = KMeans(n_clusters=3)  # Assuming 3 clusters
+    df['Cluster'] = kmeans.fit_predict(X)
+
+    # A/B testing
+    # Conduct A/B tests to measure promo impact on sales in different stores
+
+    # Visualization
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    df.plot.scatter(x='Sales', y='Customers', c='Cluster', cmap='viridis', ax=ax[0])
+    ax[0].set_title('Store Clustering based on Sales and Customers')
+    promo_effect.plot(kind='bar', ax=ax[1])
+    ax[1].set_title('Average Sales with and without Promo')
+    plt.show()
+    
+def analyze_open_weekdays_sales(df):
+    # Filter stores that are open on all weekdays
+    open_all_weekdays = df.groupby('Store')['Open'].sum() == 7
+    stores_open_all_weekdays = open_all_weekdays[open_all_weekdays].index.tolist()
+
+    # Filter data for stores open on all weekdays
+    stores_data = df[df['Store'].isin(stores_open_all_weekdays)]
+
+    # Analyze sales on weekends for these stores
+    weekend_sales = stores_data[stores_data['DayOfWeek'] >= 6].groupby('Store')['Sales'].mean()
+
+    # Plot the sales on weekends for stores open on all weekdays
+    plt.figure(figsize=(12, 6))
+    weekend_sales.plot(kind='bar', color='skyblue')
+    plt.title('Average Sales on Weekends for Stores Open on All Weekdays')
+    plt.xlabel('Store')
+    plt.ylabel('Average Sales')
+    plt.xticks(rotation=0)
+    plt.show()
+    
+def analyze_assortment_sales(df):
+    # Group data by assortment type and calculate average sales
+    assortment_sales = df.groupby('Assortment')['Sales'].mean()
+
+    # Plot the average sales for each assortment type
+    plt.figure(figsize=(8, 6))
+    assortment_sales.plot(kind='bar', color='skyblue')
+    plt.title('Average Sales by Assortment Type')
+    plt.xlabel('Assortment Type')
+    plt.ylabel('Average Sales')
+    plt.xticks(rotation=0)
+    plt.show()
+    
+def analyze_competitor_distance_sales(df):
+    # Plot the relationship between distance to the nearest competitor and sales
+    plt.figure(figsize=(10, 6))
+    plt.scatter(df['CompetitionDistance'], df['Sales'], color='skyblue', alpha=0.6)
+    plt.title('Sales vs. Competition Distance')
+    plt.xlabel('Competition Distance')
+    plt.ylabel('Sales')
+    plt.show()
+
+def analyze_new_competitor_effect(df):
+    # Filter stores with NA competitor distance that later have values
+    stores_with_na_distance = df[~df['CompetitionDistance'].notnull()]
+    stores_with_values_distance = df[df['CompetitionDistance'].notnull()]
+
+    # Plot the effect of new competitor openings on stores
+    plt.figure(figsize=(10, 6))
+    plt.hist([stores_with_na_distance['Sales'], stores_with_values_distance['Sales']], 
+             color=['skyblue', 'salmon'], alpha=0.7, bins=20, stacked=True, label=['NA Distance', 'Values Distance'])
+    plt.title('Effect of New Competitor Openings on Stores')
+    plt.xlabel('Sales')
+    plt.ylabel('Frequency')
+    plt.legend()
     plt.show()
     
 def plot_weekly_sales(df):
