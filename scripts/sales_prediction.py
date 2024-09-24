@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
@@ -27,31 +27,37 @@ def load_data(file_path):
     return df
     
 def preprocess_data(df):
-    logging.info("Cleaning given data")
-    # Extract features from datetime columns
-    df['Date'] = pd.to_datetime(df['Date'])
-    df['DayOfWeek'] = df['Date'].dt.dayofweek
+    # Check if the columns 'StoreType' and 'Assortment' exist in the DataFrame
+    missing_columns = [col for col in ['StoreType', 'Assortment'] if col not in df.columns]
+    if missing_columns:
+        print(f"Columns {missing_columns} are missing in the DataFrame. Skipping encoding for these columns.")
+        
+    # Perform data preprocessing steps
     df['IsWeekend'] = df['DayOfWeek'].isin([5, 6]).astype(int)
     
-    # Calculate number of days to holidays, days after a holiday, etc.
-    # Add more feature engineering steps here based on the requirements
+    # Convert non-numeric columns to numeric using one-hot encoding (excluding missing columns)
+    columns_to_encode = [col for col in ['StateHoliday', 'StoreType', 'Assortment'] if col in df.columns]
+    df = pd.get_dummies(df, columns=columns_to_encode)
     
-    # Convert non-numeric columns to numeric using one-hot encoding
-    df = pd.get_dummies(df, columns=['StateHoliday', 'StoreType', 'Assortment'])
-    
-    # Scale the data
-    scaler = StandardScaler()
-    df['CompetitionDistance'] = scaler.fit_transform(df[['CompetitionDistance']])
-    logging.info("Store data is now clean")
-    return df
-    
+    # Separate features and target
+    X = df.drop(['Sales'], axis=1)
+    y = df['Sales']
+
+    return X, y
+
 def build_model(data):
-    X = data.drop(['Sales'], axis=1)
-    y = data['Sales']
+    logging.info("Store data is now clean")
+    
+    X, y = preprocess_data(data)
     
     # Define preprocessing steps
-    preprocess = ColumnTransformer(transformers=[('num', StandardScaler(), X.columns)])
-    
+    numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
+    categorical_features = X.select_dtypes(include=['object']).columns
+
+    preprocess = ColumnTransformer(transformers=[
+        ('num', StandardScaler(), numeric_features),
+        ('cat', OneHotEncoder(), categorical_features)])
+
     # Define the model
     model = RandomForestRegressor()
     
@@ -122,3 +128,26 @@ def build_lstm_model(time_series_data, n_input=10, n_output=1):
     model.fit(X_train, y_train, epochs=100, batch_size=32, validation_data=(X_test, y_test))
 
     return model, scaler
+
+def test_data(df):
+    scaled_test_data = data_scaler.transform(test_data.values.reshape(-1, 1))
+    X_test, y_test = create_supervised_data(scaled_test_data, n_input, n_output)
+    X_test = X_test.reshape(X_test.shape[0], n_input, 1)
+
+    # Make predictions on the test data
+    predictions = lstm_model.predict(X_test)
+
+    # Inverse transform the predicted values
+    predictions = data_scaler.inverse_transform(predictions)
+
+    # Inverse transform the actual values
+    y_test_original = data_scaler.inverse_transform(y_test)
+
+    # Calculate metrics
+    from sklearn.metrics import mean_squared_error, mean_absolute_error
+
+    mse = mean_squared_error(y_test_original, predictions)
+    mae = mean_absolute_error(y_test_original, predictions)
+
+    print(f"Mean Squared Error: {mse}")
+    print(f"Mean Absolute Error: {mae}")
