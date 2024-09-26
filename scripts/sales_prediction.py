@@ -12,6 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from tensorflow.keras.optimizers import Adam
+import joblib
 import logging
 
 # Configure logging
@@ -37,18 +38,25 @@ def preprocess_data(df):
     
     # Convert non-numeric columns to numeric using one-hot encoding (excluding missing columns)
     columns_to_encode = [col for col in ['StateHoliday', 'StoreType', 'Assortment'] if col in df.columns]
-    df = pd.get_dummies(df, columns=columns_to_encode)
+    df_encoded = pd.get_dummies(df, columns=columns_to_encode)
     
     # Separate features and target
-    X = df.drop(['Sales'], axis=1)
-    y = df['Sales']
+    X = df_encoded.drop(['Sales'], axis=1)
+    y = df_encoded['Sales']
 
     return X, y
 
-def build_model(data):
-    logging.info("Store data is now clean")
+def build_model(data, n_samples=100000, max_depth=64, n_estimators=10):
+    logging.info("Building the model")
     
+    # Preprocess the data
     X, y = preprocess_data(data)
+    
+    # Take a subset of the data
+    data_subset = pd.concat([X, y], axis=1).sample(n=n_samples, random_state=42)
+    
+    X = data_subset.drop(['Sales'], axis=1)
+    y = data_subset['Sales']
     
     # Define preprocessing steps
     numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
@@ -58,8 +66,8 @@ def build_model(data):
         ('num', StandardScaler(), numeric_features),
         ('cat', OneHotEncoder(), categorical_features)])
 
-    # Define the model
-    model = RandomForestRegressor()
+    # Define the model with specified parameters
+    model = RandomForestRegressor(max_depth=max_depth, n_estimators=n_estimators)
     
     # Create a pipeline
     pipeline = Pipeline(steps=[('preprocess', preprocess), ('model', model)])
@@ -69,8 +77,14 @@ def build_model(data):
     
     # Fit the model
     pipeline.fit(X_train, y_train)
-    
+    logging.info("Fitted the model")
+
     return pipeline, X_val, y_val
+
+def predict_data(pipeline, X_data):
+    # Make predictions using the provided pipeline
+    logging.info("Predicting  the Sales")
+    return pipeline.predict(X_data)
 
 def custom_loss(y_true, y_pred):
     # Mean Absolute Percentage Error (MAPE)
@@ -84,8 +98,8 @@ def analyze_predictions(model, X_val, y_val):
     for feature, importance in zip(X_val.columns, feature_importances):
         print(f"{feature}: {importance}")
 
-    # Make predictions on validation set
-    predictions = model.predict(X_val)
+    # Make predictions on validation set using the predict_data function
+    predictions = predict_data(model, X_val)
 
     # Calculate confidence intervals
     residuals = y_val - predictions
@@ -96,38 +110,41 @@ def serialize_model(model, timestamp):
     # Save the model with a timestamp
     model_filename = f"{timestamp}.pkl"
     joblib.dump(model, model_filename)
+
+def create_supervised_data(data, n_input, n_output):
+    X, y = [], []
+    for i in range(len(data) - n_input - n_output + 1):
+        X.append(data[i : i + n_input])
+        y.append(data[i + n_input : i + n_input + n_output])
+    return np.array(X), np.array(y)
+  
+def build_lstm_model(scaled_data, n_input=1, n_output=1, epochs=10, batch_size=32, optimizer='adam', loss='mean_squared_error'):
+    scaled_data['Date'] = pd.to_datetime(scaled_data['Date']).astype('int64') // 10**9
+    # Convert non-numeric values to NaN
+    scaled_data = scaled_data.apply(pd.to_numeric, errors='coerce')
+    # Drop rows with NaN values
+    scaled_data = scaled_data.dropna()
     
-def build_lstm_model(time_series_data, n_input=10, n_output=1):
-    # Scale the data in the (-1, 1) range
-    scaler = MinMaxScaler(feature_range=(-1, 1))
-    scaled_data = scaler.fit_transform(time_series_data.values.reshape(-1, 1))
-
-    # Create supervised learning data
-    def create_supervised_data(data, n_in, n_out):
-        X, y = [], []
-        for i in range(len(data)-n_in-n_out+1):
-            X.append(data[i:i+n_in])
-            y.append(data[i+n_in:i+n_in+n_out])
-        return np.array(X), np.array(y)
-
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(scaled_data)
     X, y = create_supervised_data(scaled_data, n_input, n_output)
-
+    
     # Reshape input data for LSTM (samples, time steps, features)
-    X = X.reshape(X.shape[0], n_input, 1)
-
+    X = X.reshape(X.shape[0], n_input, X.shape[1])
+    
     # Split data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Build the LSTM model
+    
+    # Build LSTM model
     model = Sequential()
-    model.add(LSTM(50, activation='relu', input_shape=(n_input, 1)))
+    model.add(LSTM(50, activation='relu', input_shape=(n_input, X.shape[1])))
     model.add(Dense(n_output))
-    model.compile(optimizer=Adam(learning_rate=0.001), loss='mean_squared_error')
-
-    # Fit the model
-    model.fit(X_train, y_train, epochs=100, batch_size=32, validation_data=(X_test, y_test))
-
-    return model, scaler
+    model.compile(optimizer=optimizer, loss=loss)
+    
+    # Train the model
+    model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size)
+    
+    return model
 
 def test_data(df):
     scaled_test_data = data_scaler.transform(test_data.values.reshape(-1, 1))
