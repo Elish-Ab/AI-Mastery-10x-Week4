@@ -1,0 +1,4 @@
+.env
+notebooks/store.csv
+notebooks/test.csv
+notebooks/train.csv
